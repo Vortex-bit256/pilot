@@ -4,28 +4,24 @@ MVP coding-агента на TypeScript / Node.js. Подключается к D
 поддерживает tool-calling (чтение/запись/правка файлов, листинг директорий, запуск shell-команд)
 и работает как интерактивный REPL или как разовая CLI-команда.
 
+Ядро агента (события, инструменты, провайдеры) отделено от CLI и спроектировано под будущие клиенты
+(VS Code extension, desktop, web) — см. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) и ADR в [docs/adr/](docs/adr/).
+
 ## Структура
 
 ```
 src/
-├── index.ts            # точка входа (REPL / one-shot режим, флаги CLI)
-├── config.ts           # конфигурация (env-переменные)
-├── agent/              # ядро агента
-│   ├── agent.ts        # цикл агента (LLM -> tools -> LLM -> ...)
-│   └── types.ts        # AgentConfig, Message, ToolCall
-├── llm/                # абстракция над LLM
-│   ├── provider.ts     # интерфейс LLMProvider
-│   └── deepseek.ts     # реализация для DeepSeek API (OpenAI-совместимый)
-├── tools/              # инструменты агента
-│   ├── types.ts        # Tool, ToolDefinition, ToolResult
-│   ├── index.ts        # реестр инструментов
-│   ├── readFile.ts     # read_file — прочитать файл
-│   ├── writeFile.ts    # write_file — создать/перезаписать файл
-│   ├── editFile.ts     # edit_file — точечная замена фрагмента в файле
-│   ├── listFiles.ts    # list_files — листинг директории (рекурсивно)
-│   └── runCommand.ts   # run_command — выполнить shell-команду
-└── cli/
-    └── repl.ts         # интерактивный REPL
+├── index.ts               # composition root: сборка приложения, флаги CLI
+├── protocol/              # контракт core <-> клиенты (только типы, без логики)
+│   ├── types.ts           # ToolCall, ToolResult, TokenUsage
+│   ├── events.ts          # AgentEvent: text, tool_call, tool_result, usage, done
+│   └── commands.ts        # команды ядру (run_task, cancel_task)
+├── core/                  # headless-движок: не пишет в stdout, не знает о CLI
+│   ├── agent/             # цикл агента (async-генератор событий) + типы истории
+│   ├── llm/               # интерфейс LLMProvider, реестр провайдеров, providers/deepseek.ts
+│   ├── tools/             # defineTool (zod), ToolRegistry (источники), ToolContext, builtin/
+│   └── config/            # слоистый конфиг: defaults < agent.config.json < env < CLI
+└── cli/                   # клиент №1: REPL (repl.ts) + рендер событий (render.ts)
 ```
 
 ## Команды
@@ -45,6 +41,25 @@ npm run debug
    Ключ также можно передать через переменную окружения — она имеет приоритет над `.env`.
 2. Опционально: выбрать модель через `AGENT_MODEL` (`deepseek-chat` по умолчанию, `deepseek-reasoner` для R1),
    лимит итераций цикла через `AGENT_MAX_ITERATIONS` и подробные логи через `AGENT_DEBUG=1`.
+
+Конфигурация собирается по слоям (от низшего приоритета к высшему):
+
+**defaults < `agent.config.json` в рабочей директории < переменные окружения < CLI-флаги**
+
+| Поле | env | agent.config.json | По умолчанию |
+|---|---|---|---|
+| `provider` | `AGENT_PROVIDER` | `"provider"` | `deepseek` |
+| `model` | `AGENT_MODEL` | `"model"` | `deepseek-chat` |
+| `maxIterations` | `AGENT_MAX_ITERATIONS` | `"maxIterations"` | `20` |
+| `debug` | `AGENT_DEBUG` | `"debug"` | `false` |
+
+Пример `agent.config.json`:
+
+```json
+{ "model": "deepseek-reasoner", "maxIterations": 40 }
+```
+
+Ключи API в конфиг не входят — ими владеют фабрики провайдеров (`DEEPSEEK_API_KEY` и т.д.).
 
 ```bash
 cp .env.example .env
@@ -74,20 +89,33 @@ npm run build && node dist/index.js "покажи список файлов в s
 Флаги CLI:
 
 ```
---debug, -d   логировать каждый ответ LLM и вызов инструментов в stderr
+--debug, -d   логировать каждое событие агента в stderr
 --help,  -h   справка
 ```
 
 ## Как это работает
 
-1. `loadConfig()` загружает `.env` (встроенный `process.loadEnvFile`, Node >= 20.6) и валидирует конфигурацию —
-   без ключа приложение падает сразу с понятной ошибкой.
-2. `DeepSeekProvider.chat()` вызывает `chat.completions` DeepSeek через OpenAI SDK и мапит ответ
-   (текст + `tool_calls`) во внутренний `LLMResponse`.
-3. `Agent.run()` крутит цикл: LLM -> выполнение инструментов -> результат обратно в LLM, пока модель не даст
-   финальный ответ или не кончится лимит итераций. Ошибка любого инструмента не роняет цикл,
-   а возвращается модели как `Error: ...`, чтобы она могла скорректировать действия.
-4. `repl.ts` принимает ввод пользователя, печатает ответы агента и не падает на ошибках API.
+1. `loadConfig()` загружает `.env`, накладывает слои `agent.config.json` → env → CLI-флаги
+   и валидирует результат zod-схемой — невалидная конфигурация падает на старте с читаемой ошибкой.
+2. `createProvider(config.provider)` берёт фабрику из реестра провайдеров; фабрика DeepSeek
+   читает `DEEPSEEK_API_KEY`/`DEEPSEEK_BASE_URL` и падает с понятной ошибкой, если ключа нет.
+3. `Agent.run()` — async-генератор: крутит цикл LLM -> выполнение инструментов -> результат
+   обратно в LLM и по ходу отдаёт события (`tool_call`, `tool_result`, `usage`, `done`).
+   Ошибка любого инструмента не роняет цикл, а возвращается модели как `Error: ...`,
+   чтобы она могла скорректировать действия.
+4. Вход каждого инструмента валидируется zod-схемой в `ToolRegistry`; ошибка валидации
+   тоже уходит модели как обычный результат инструмента.
+5. `cli/repl.ts` принимает ввод пользователя, `cli/render.ts` рендерит события
+   (в обычном режиме — тихо, с `--debug` — каждое событие в stderr).
+
+## Расширение
+
+- **Новый инструмент**: файл в `src/core/tools/builtin/` через `defineTool({ name, description, kind, schema, execute })`
+  + одна строка в `builtin/index.ts`. JSON Schema для LLM генерируется из zod-схемы автоматически.
+- **Новый LLM-провайдер**: файл в `src/core/llm/providers/` (класс `implements LLMProvider` + фабрика)
+  + одна строка в `providers/index.ts`. Выбор — `AGENT_PROVIDER` или `provider` в `agent.config.json`.
+
+Подробности и дорожная карта: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Отладка
 
@@ -98,15 +126,15 @@ npm run dev -- --debug "твоя задача"
 AGENT_DEBUG=1 npm run dev
 ```
 
-Логи идут в stderr и не смешиваются с ответом агента: каждая итерация цикла,
-`stopReason` от модели, все вызовы инструментов с аргументами и их результаты (обрезанные до 300 символов).
-В debug-режиме фатальные ошибки печатаются со stack trace.
+Логи идут в stderr и не смешиваются с ответом агента: каждое событие ядра —
+текст модели, вызовы инструментов с аргументами, результаты (обрезанные до 300 символов),
+расход токенов. В debug-режиме фатальные ошибки печатаются со stack trace.
 
 ### 2. Отладчик VS Code (точки останова)
 
 В проекте есть `.vscode/launch.json` с тремя конфигурациями:
 
-- **Debug agent (REPL)** — F5, агент запускается во встроенном терминале, брейкпоинты в `src/*.ts` работают
+- **Debug agent (REPL)** — F5, агент запускается во встроенном терминале, брейкпоинты в `src/**` работают
   из коробки (tsx сам подключает source maps).
 - **Debug agent (one-shot)** — то же, но с разовой задачей и включённым `--debug`
   (текст задачи правится в `runtimeArgs`).
@@ -138,5 +166,7 @@ node --inspect-brk dist/index.js
 | `DEEPSEEK_API_KEY is not set` | Нет `.env` или ключа в окружении — см. «Настройка» |
 | `DeepSeek API error (HTTP 401)` | Невалидный ключ |
 | `DeepSeek API error (HTTP 402)` | Кончился баланс DeepSeek |
+| `Unknown LLM provider: "..."` | Опечатка в `AGENT_PROVIDER` / `provider`; ошибка покажет список доступных |
+| `Invalid configuration: ...` | Невалидный `agent.config.json` или env (например, `AGENT_MAX_ITERATIONS=abc`) |
 | Агент крутится без ответа | Смотри логи с `--debug`: какие инструменты вызываются и что возвращают |
 | Брейкпоинты "серые" в VS Code | Запускай через конфигурации из launch.json, не через обычный терминал |

@@ -1,8 +1,11 @@
-import { Agent } from "./agent/agent.js";
+import { runAndRender } from "./cli/render.js";
 import { runRepl } from "./cli/repl.js";
-import { loadConfig } from "./config.js";
-import { DeepSeekProvider } from "./llm/deepseek.js";
-import { getToolDefinitions } from "./tools/index.js";
+import { Agent } from "./core/agent/agent.js";
+import { loadConfig } from "./core/config/config.js";
+import { registerBuiltinProviders } from "./core/llm/providers/index.js";
+import { createProvider } from "./core/llm/registry.js";
+import { builtinTools } from "./core/tools/builtin/index.js";
+import { ToolRegistry } from "./core/tools/registry.js";
 
 const SYSTEM_PROMPT = `You are a coding agent running in a terminal.
 You help the user with programming tasks in the current working directory.
@@ -17,7 +20,7 @@ const USAGE = `Usage:
   npm run dev -- --debug "task"   Same, with verbose debug logs on stderr
 
 Options:
-  --debug, -d   Log every LLM response and tool call to stderr (same as AGENT_DEBUG=1)
+  --debug, -d   Log every agent event to stderr (same as AGENT_DEBUG=1)
   --help,  -h   Show this help`;
 
 interface CliArgs {
@@ -48,31 +51,38 @@ function parseArgs(argv: string[]): CliArgs {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const config = loadConfig();
 
-  const llm = new DeepSeekProvider(config.apiKey, config.baseUrl);
+
+  const config = loadConfig(args.debug ? { debug: true } : {});
+
+
+  registerBuiltinProviders();
+  const llm = createProvider(config.provider);
+
+  const tools = new ToolRegistry();
+  tools.registerAll(builtinTools);
 
   const agent = new Agent(
     {
       model: config.model,
       systemPrompt: SYSTEM_PROMPT,
-      tools: getToolDefinitions(),
       maxIterations: config.maxIterations,
-      debug: config.debug || args.debug,
     },
     llm,
+    tools,
+    { cwd: process.cwd() },
   );
 
-  console.error(`Connected to DeepSeek API (model: ${config.model})`);
+  console.error(`Provider: ${llm.id}, model: ${config.model}`);
 
   if (args.task) {
 
-    const answer = await agent.run(args.task);
+    const answer = await runAndRender(agent, args.task, { debug: config.debug });
     console.log(answer);
     return;
   }
 
-  await runRepl(agent);
+  await runRepl(agent, { debug: config.debug });
 }
 
 main().catch((error: unknown) => {

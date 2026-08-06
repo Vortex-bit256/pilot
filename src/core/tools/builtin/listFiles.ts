@@ -1,34 +1,27 @@
 import { readdir, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
-import type { Tool } from "./types.js";
+import { join, relative, resolve } from "node:path";
+import { z } from "zod";
+import { defineTool } from "../tool.js";
 
 const MAX_ENTRIES = 500;
 const IGNORED = new Set(["node_modules", ".git", "dist"]);
 
-export const listFilesTool: Tool = {
-  definition: {
-    name: "list_files",
-    description:
-      "List files and directories at the given path. Use recursive=true to list the whole subtree.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "Directory to list (default: current directory)" },
-        recursive: {
-          type: "boolean",
-          description: "List subdirectories recursively (default: false)",
-        },
-      },
-    },
-  },
-  async execute(input) {
-    const root = String(input.path ?? ".") || ".";
-    const recursive = input.recursive === true;
+export const listFilesTool = defineTool({
+  name: "list_files",
+  description:
+    "List files and directories at the given path. Use recursive=true to list the whole subtree.",
+  kind: "read",
+  schema: z.object({
+    path: z.string().min(1).default(".").describe("Directory to list (default: current directory)"),
+    recursive: z.boolean().default(false).describe("List subdirectories recursively (default: false)"),
+  }),
+  async execute({ path, recursive }, ctx) {
+    const root = resolve(ctx.cwd, path);
 
     try {
       const rootStat = await stat(root);
       if (!rootStat.isDirectory()) {
-        return { content: `Not a directory: "${root}"`, isError: true };
+        return { content: `Not a directory: "${path}"`, isError: true };
       }
 
       const entries: string[] = [];
@@ -43,7 +36,7 @@ export const listFilesTool: Tool = {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return { content: `Failed to list "${root}": ${message}`, isError: true };
+      return { content: `Failed to list "${path}": ${message}`, isError: true };
     }
 
     async function collect(dir: string, deep: boolean, out: string[]): Promise<void> {
@@ -62,4 +55,4 @@ export const listFilesTool: Tool = {
       }
     }
   },
-};
+});

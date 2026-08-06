@@ -1,6 +1,7 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import type { Tool } from "./types.js";
+import { z } from "zod";
+import { defineTool } from "../tool.js";
 
 const execAsync = promisify(exec);
 
@@ -14,25 +15,18 @@ interface ExecError {
   killed?: boolean;
 }
 
-export const runCommandTool: Tool = {
-  definition: {
-    name: "run_command",
-    description: "Run a shell command and return its stdout/stderr",
-    inputSchema: {
-      type: "object",
-      properties: {
-        command: { type: "string", description: "Shell command to execute" },
-      },
-      required: ["command"],
-    },
-  },
-  async execute(input) {
-    const command = String(input.command ?? "");
-    if (!command) {
-      return { content: "Missing required parameter: command", isError: true };
-    }
+export const runCommandTool = defineTool({
+  name: "run_command",
+  description: "Run a shell command and return its stdout/stderr",
+  kind: "exec",
+  schema: z.object({
+    command: z.string().min(1).describe("Shell command to execute"),
+  }),
+  async execute({ command }, ctx) {
     try {
       const { stdout, stderr } = await execAsync(command, {
+        cwd: ctx.cwd,
+        signal: ctx.signal,
         timeout: TIMEOUT_MS,
         maxBuffer: MAX_BUFFER_BYTES,
       });
@@ -51,4 +45,4 @@ export const runCommandTool: Tool = {
       return { content: parts.join("\n"), isError: true };
     }
   },
-};
+});

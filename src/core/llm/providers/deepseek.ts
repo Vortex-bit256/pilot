@@ -1,13 +1,31 @@
 import OpenAI from "openai";
-import type { Message, ToolCall } from "../agent/types.js";
-import type { ChatParams, LLMProvider, LLMResponse } from "./provider.js";
+import type { TokenUsage, ToolCall } from "../../../protocol/index.js";
+import type { Message } from "../../agent/types.js";
+import type {
+  ChatParams,
+  LLMProvider,
+  LLMResponse,
+  ModelCapabilities,
+} from "../provider.js";
+
+const DEFAULT_BASE_URL = "https://api.deepseek.com";
 
 export class DeepSeekProvider implements LLMProvider {
+  readonly id = "deepseek";
   private readonly client: OpenAI;
 
-  constructor(apiKey: string, baseURL = "https://api.deepseek.com") {
+  constructor(apiKey: string, baseURL = DEFAULT_BASE_URL) {
 
     this.client = new OpenAI({ apiKey, baseURL });
+  }
+
+  capabilities(model: string): ModelCapabilities {
+    return {
+
+      streaming: false,
+      toolCalling: true,
+      reasoning: model.includes("reasoner"),
+    };
   }
 
   async chat(params: ChatParams): Promise<LLMResponse> {
@@ -49,12 +67,34 @@ export class DeepSeekProvider implements LLMProvider {
         input: parseToolArguments(tc.function.arguments),
       }));
 
+    const usage: TokenUsage | undefined = response.usage
+      ? {
+          promptTokens: response.usage.prompt_tokens,
+          completionTokens: response.usage.completion_tokens,
+          totalTokens: response.usage.total_tokens,
+        }
+      : undefined;
+
     return {
       text: message?.content ?? undefined,
       toolCalls,
       stopReason: choice?.finish_reason ?? "unknown",
+      usage,
     };
   }
+}
+
+
+export function createDeepSeekProvider(): DeepSeekProvider {
+  const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error(
+      "DEEPSEEK_API_KEY is not set.\n" +
+        "  1. Copy .env.example to .env and put your key there, or\n" +
+        "  2. export DEEPSEEK_API_KEY=<your-key>",
+    );
+  }
+  return new DeepSeekProvider(apiKey, process.env.DEEPSEEK_BASE_URL ?? DEFAULT_BASE_URL);
 }
 
 
