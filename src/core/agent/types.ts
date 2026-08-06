@@ -1,4 +1,4 @@
-import type { ToolCall } from "../../protocol/index.js";
+import type { PermissionMode, ToolCall } from "../../protocol/index.js";
 
 export interface AgentConfig {
   model: string;
@@ -6,6 +6,8 @@ export interface AgentConfig {
   maxIterations: number;
 
   streaming: boolean;
+
+  permissionMode: PermissionMode;
 }
 
 

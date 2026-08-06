@@ -1,5 +1,7 @@
 import type { Agent } from "../core/agent/agent.js";
 import type { AgentEvent } from "../protocol/index.js";
+import { cyan, dim, green, isTTY, red } from "./ansi.js";
+
 
 export interface RenderOptions {
 
@@ -157,18 +159,6 @@ function formatEvent(event: AgentEvent): string {
       return `done (answer: ${event.answer.length} chars)`;
   }
 }
-
-const isTTY = Boolean(process.stdout.isTTY);
-const useColor = isTTY && !process.env.NO_COLOR;
-
-function paint(code: string, text: string): string {
-  return useColor ? `\x1b[${code}m${text}\x1b[0m` : text;
-}
-
-const dim = (text: string) => paint("2", text);
-const red = (text: string) => paint("31", text);
-const green = (text: string) => paint("32", text);
-const cyan = (text: string) => paint("36", text);
 
 
 function summarizeInput(input: Record<string, unknown>): string {

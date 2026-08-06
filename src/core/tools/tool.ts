@@ -1,9 +1,9 @@
 import { z } from "zod";
-import type { ToolResult } from "../../protocol/index.js";
+import type { ToolKind, ToolResult } from "../../protocol/index.js";
 import type { ToolContext } from "./context.js";
 
 
-export type ToolKind = "read" | "write" | "exec";
+export type { ToolKind };
 
 
 export interface ToolDefinition {

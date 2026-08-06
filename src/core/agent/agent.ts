@@ -1,7 +1,15 @@
-import type { AgentEvent } from "../../protocol/index.js";
+import type {
+  AgentEvent,
+  ApprovalDecision,
+  PermissionMode,
+  ToolCall,
+  ToolResult,
+} from "../../protocol/index.js";
+
 import type { ChatParams, LLMProvider, LLMResponse } from "../llm/provider.js";
 import type { ToolContext } from "../tools/context.js";
 import type { ToolRegistry } from "../tools/registry.js";
+import { needsApproval, type ApprovalHandler } from "./permissions.js";
 import type { AgentConfig, Message } from "./types.js";
 
 
@@ -14,6 +22,7 @@ interface LLMCallResult {
 
 export class Agent {
   private readonly messages: Message[] = [];
+  private approvalHandler?: ApprovalHandler;
 
   constructor(
     private readonly config: AgentConfig,
@@ -21,6 +30,21 @@ export class Agent {
     private readonly tools: ToolRegistry,
     private readonly toolContext: ToolContext,
   ) {}
+
+
+  get permissionMode(): PermissionMode {
+    return this.config.permissionMode;
+  }
+
+
+  setPermissionMode(mode: PermissionMode): void {
+    this.config.permissionMode = mode;
+  }
+
+
+  setApprovalHandler(handler: ApprovalHandler | undefined): void {
+    this.approvalHandler = handler;
+  }
 
 
   async *run(userInput: string): AsyncGenerator<AgentEvent, string, void> {
@@ -60,7 +84,8 @@ export class Agent {
       for (const call of response.toolCalls) {
         yield { type: "tool_call", call };
 
-        const result = await this.tools.execute(call, this.toolContext);
+        const result = await this.executeWithApproval(call);
+
 
         yield { type: "tool_result", call, result };
 
@@ -75,6 +100,54 @@ export class Agent {
     const answer = `Stopped: reached the limit of ${this.config.maxIterations} iterations without a final answer.`;
     yield { type: "done", answer };
     return answer;
+  }
+
+
+  private async executeWithApproval(call: ToolCall): Promise<ToolResult> {
+    const entry = this.tools.get(call.name);
+
+    if (!entry) {
+      return this.tools.execute(call, this.toolContext);
+    }
+
+    const kind = entry.tool.definition.kind;
+    const mode = this.config.permissionMode;
+
+    if (needsApproval(mode, kind)) {
+      if (!this.approvalHandler) {
+        return {
+          content:
+            `Tool "${call.name}" (kind: ${kind}) requires user approval in "${mode}" mode, ` +
+            "but this session has no approval channel (non-interactive). The call was denied " +
+            "automatically. Explain what you wanted to do and let the user decide how to proceed.",
+          isError: true,
+        };
+      }
+
+      let decision: ApprovalDecision;
+      try {
+        decision = await this.approvalHandler({ call, kind });
+      } catch (error) {
+
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: `Approval for tool "${call.name}" failed (${message}); the call was denied. Try again or ask the user for guidance.`,
+          isError: true,
+        };
+      }
+
+
+      if (decision === "deny") {
+        return {
+          content:
+            "The user denied this tool call. Do not retry it unchanged; " +
+            "ask the user how to proceed or propose a different approach.",
+          isError: true,
+        };
+      }
+    }
+
+    return this.tools.execute(call, this.toolContext);
   }
 
 

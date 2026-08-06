@@ -12,7 +12,11 @@ const configSchema = z.object({
   debug: z.boolean().default(false),
 
   streaming: z.boolean().default(true),
+
+
+  permissionMode: z.enum(["safe", "work", "free"]).default("safe"),
 });
+
 
 export type AppConfig = z.output<typeof configSchema>;
 
@@ -54,6 +58,8 @@ function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   if (debug) layer.debug = debug === "1" || debug === "true";
   const streaming = env.AGENT_STREAMING?.trim().toLowerCase();
   if (streaming) layer.streaming = streaming === "1" || streaming === "true";
+  const mode = env.AGENT_MODE?.trim().toLowerCase();
+  if (mode) layer.permissionMode = mode;
   return layer;
 }
 
