@@ -7,7 +7,11 @@ export interface ChatParams {
   systemPrompt?: string;
   messages: Message[];
   tools?: ToolDefinition[];
+
+
+  signal?: AbortSignal;
 }
+
 
 export interface LLMResponse {
   text?: string;

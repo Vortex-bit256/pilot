@@ -1,6 +1,8 @@
 import * as readline from "node:readline";
-import { dim, red } from "./cli/ansi.js";
-import { createCliApprovalHandler } from "./cli/approval.js";
+import { theme } from "./cli/ansi.js";
+import { createCliApprovalHandler, readlineQuestion } from "./cli/approval.js";
+import { banner, glyphs } from "./cli/ui.js";
+
 import { runAndRender } from "./cli/render.js";
 import { runRepl } from "./cli/repl.js";
 import { Agent } from "./core/agent/agent.js";
@@ -115,19 +117,37 @@ async function main(): Promise<void> {
     { cwd: process.cwd() },
   );
 
-  console.error(`Provider: ${llm.id}, model: ${config.model}`);
-  console.error(`Permissions: ${describePermissionMode(config.permissionMode)}`);
-  if (config.permissionMode === "free") {
-    console.error(
-      red("⚠ FREE MODE: all tool calls, including shell commands, run WITHOUT confirmation."),
+  if (!args.task) {
+
+    console.log(banner("0.1.0", { provider: llm.id, model: config.model }));
+    console.log();
+    console.log(
+      theme.faint("permissions ") +
+        theme.muted(describePermissionMode(config.permissionMode)),
     );
-  } else if (!process.stdin.isTTY) {
+    if (config.permissionMode === "free") {
+      console.log(
+        theme.error("⚠ FREE MODE: all tool calls, including shell commands, run WITHOUT confirmation."),
+      );
+    }
+    console.log();
+  } else {
+
     console.error(
-      dim(
-        "Non-interactive stdin: tool calls that need approval will be auto-denied " +
-          "(use --mode free to allow them).",
-      ),
+      theme.faint(`${llm.id} ${glyphs.dot} ${config.model} ${glyphs.dot} ${describePermissionMode(config.permissionMode)}`),
     );
+    if (config.permissionMode === "free") {
+      console.error(
+        theme.error("⚠ FREE MODE: all tool calls, including shell commands, run WITHOUT confirmation."),
+      );
+    } else if (!process.stdin.isTTY) {
+      console.error(
+        theme.faint(
+          "Non-interactive stdin: tool calls that need approval will be auto-denied " +
+            "(use --mode free to allow them).",
+        ),
+      );
+    }
   }
 
   if (args.task) {
@@ -138,9 +158,10 @@ async function main(): Promise<void> {
       agent.setApprovalHandler(
         createCliApprovalHandler({
           cwd: process.cwd(),
-          question: (query) => new Promise<string>((resolve) => rl.question(query, resolve)),
+          question: readlineQuestion(rl),
         }),
       );
+
       try {
         await runAndRender(agent, args.task, { debug: config.debug });
       } finally {

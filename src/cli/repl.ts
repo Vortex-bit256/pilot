@@ -5,39 +5,58 @@ import {
   parsePermissionMode,
   PERMISSION_MODES,
 } from "../core/agent/permissions.js";
-import { red, yellow } from "./ansi.js";
-import { createCliApprovalHandler } from "./approval.js";
+import { theme, themeBold, ellipsize } from "./ansi.js";
+import { createCliApprovalHandler, readlineQuestion } from "./approval.js";
 import { runAndRender, type RenderOptions } from "./render.js";
+import { box, glyphs, keycap } from "./ui.js";
 
-const HELP = `Commands:
-  help          Show this help
-  mode [name]   Show or switch the permission mode (safe, work, free)
-  exit          Quit (also: quit, Ctrl+C, Ctrl+D)
-Commands also accept a "/" prefix. Anything else is sent to the agent as a task.`;
+
+interface KeypressKey {
+  name?: string;
+}
+
+const PROMPT = `${theme.primary("❯")} `;
 
 export async function runRepl(agent: Agent, options: RenderOptions): Promise<void> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: "> ",
+    prompt: PROMPT,
   });
+
+
+  let currentTask: AbortController | undefined;
 
 
   if (process.stdin.isTTY) {
     agent.setApprovalHandler(
       createCliApprovalHandler({
         cwd: process.cwd(),
-        question: (query) => new Promise<string>((resolve) => rl.question(query, resolve)),
+        question: readlineQuestion(rl),
       }),
     );
   }
 
-  console.log("simple-agent ready. Type 'help' for commands, 'exit' to quit.");
+  printHints(agent);
   rl.prompt();
 
 
+  (process.stdin as NodeJS.EventEmitter).on("keypress", (_str: unknown, key: KeypressKey) => {
+
+    if (key?.name === "escape" && currentTask && !currentTask.signal.aborted) {
+      console.log(theme.faint("\n(cancelling the task…)"));
+      currentTask.abort();
+    }
+  });
+
+
   rl.on("SIGINT", () => {
-    console.log("\n(press Ctrl+C again or type 'exit' to quit)");
+    if (currentTask && !currentTask.signal.aborted) {
+      console.log(theme.faint("\n(cancelling the task…)"));
+      currentTask.abort();
+      return;
+    }
+    console.log(theme.faint("\n(press Ctrl+C again or type 'exit' to quit)"));
     rl.prompt();
   });
 
@@ -51,7 +70,7 @@ export async function runRepl(agent: Agent, options: RenderOptions): Promise<voi
     }
 
     if (command === "help") {
-      console.log(HELP);
+      printHelp();
       rl.prompt();
       continue;
     }
@@ -63,40 +82,112 @@ export async function runRepl(agent: Agent, options: RenderOptions): Promise<voi
     }
 
     if (input) {
+      echoTask(input);
+      const controller = new AbortController();
+      currentTask = controller;
       try {
-
-        await runAndRender(agent, input, options);
+        await runAndRender(agent, input, { ...options, signal: controller.signal });
         console.log();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`\nError: ${message}\n`);
+        console.error(theme.error(`\n${glyphs.cross} ${message}`) + "\n");
+      } finally {
+        currentTask = undefined;
       }
     }
 
     rl.prompt();
   }
+
+  console.log(theme.faint("bye"));
+}
+
+
+function printHints(agent: Agent): void {
+  console.log(
+    "  " +
+      theme.faint("type ") +
+      theme.muted("help") +
+      theme.faint(" for commands  ·  ") +
+      keycap("esc") +
+      theme.faint(" cancels a running task  ·  mode: ") +
+      theme.muted(agent.permissionMode),
+  );
+  console.log();
+}
+
+
+function echoTask(input: string): void {
+  const preview = input.length > 200 ? ellipsize(input, 200) : input;
+  console.log();
+  console.log(
+    box(preview, {
+      title: "you",
+      titleColor: theme.muted,
+      border: theme.faint,
+      minWidth: 34,
+    }),
+  );
+}
+
+function printHelp(): void {
+  console.log();
+  console.log(
+    box(
+      [
+        `${themeBold.text("help")}          ${theme.muted("Show this help")}`,
+        `${themeBold.text("mode")} [name]   ${theme.muted("Show or switch the permission mode")}`,
+        `${themeBold.text("exit")}          ${theme.muted("Quit (also: quit, Ctrl+C, Ctrl+D)")}`,
+        "",
+        theme.muted("While a task is running, ") +
+          keycap("esc") +
+          theme.muted(" or ") +
+          keycap("ctrl+c") +
+          theme.muted(" cancels it."),
+        theme.muted('Commands also accept a "/" prefix. Anything else is sent to the agent as a task.'),
+      ],
+      { title: "commands", minWidth: 60 },
+    ),
+  );
+  console.log();
 }
 
 function handleModeCommand(agent: Agent, arg: string): void {
   if (!arg) {
-    console.log(`Permission mode: ${describePermissionMode(agent.permissionMode)}`);
-    console.log(`Available: ${PERMISSION_MODES.join(", ")} — switch with "mode <name>".`);
+    console.log(
+      box(
+        [
+          `${theme.faint("current")}   ${theme.muted(describePermissionMode(agent.permissionMode))}`,
+          `${theme.faint("available")} ${PERMISSION_MODES.map((mode) =>
+            mode === agent.permissionMode ? themeBold.accent(mode) : theme.muted(mode),
+          ).join(theme.faint("  ·  "))}`,
+        ],
+        { title: "permission mode", minWidth: 56 },
+      ),
+    );
     return;
   }
 
   const mode = parsePermissionMode(arg);
   if (!mode) {
-    console.log(`Unknown mode "${arg}". Available: ${PERMISSION_MODES.join(", ")}.`);
+    console.log(
+      theme.error(`${glyphs.cross} Unknown mode "${arg}".`) +
+        theme.faint(` Available: ${PERMISSION_MODES.join(", ")}.`),
+    );
     return;
   }
 
   agent.setPermissionMode(mode);
   if (mode === "free") {
     console.log(
-      red("⚠ FREE MODE: the agent will run ALL tool calls, including shell commands, without asking."),
+      theme.error("⚠ FREE MODE: the agent will run ALL tool calls, including shell commands, without asking."),
     );
-    console.log(red('  Not recommended — type "mode work" or "mode safe" to re-enable approvals.'));
+    console.log(theme.error('  Not recommended — type "mode work" or "mode safe" to re-enable approvals.'));
   } else {
-    console.log(yellow(`Permission mode: ${describePermissionMode(mode)}`));
+    console.log(
+      theme.success(glyphs.check) +
+        " " +
+        theme.muted(`Permission mode: ${describePermissionMode(mode)}`),
+    );
   }
 }

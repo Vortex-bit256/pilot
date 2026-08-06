@@ -29,8 +29,12 @@ export type PermissionMode = "safe" | "work" | "free";
 export interface ApprovalRequest {
   call: ToolCall;
   kind: ToolKind;
+
+
+  signal?: AbortSignal;
 }
 
 
-export type ApprovalDecision = "allow" | "deny";
+export type ApprovalDecision = "allow" | "deny" | "always";
+
 

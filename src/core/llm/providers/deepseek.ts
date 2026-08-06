@@ -32,10 +32,13 @@ export class DeepSeekProvider implements LLMProvider {
     let response: OpenAI.ChatCompletion;
 
     try {
-      response = await this.client.chat.completions.create(toApiRequest(params));
+      response = await this.client.chat.completions.create(toApiRequest(params), {
+        signal: params.signal,
+      });
     } catch (error) {
       throw normalizeApiError(error);
     }
+
 
     const choice = response.choices[0];
     const message = choice?.message;
@@ -64,11 +67,15 @@ export class DeepSeekProvider implements LLMProvider {
     const pendingToolCalls = new Map<number, { id: string; name: string; arguments: string }>();
 
     try {
-      const stream = await this.client.chat.completions.create({
-        ...toApiRequest(params),
-        stream: true,
-        stream_options: { include_usage: true },
-      });
+      const stream = await this.client.chat.completions.create(
+        {
+          ...toApiRequest(params),
+          stream: true,
+          stream_options: { include_usage: true },
+        },
+        { signal: params.signal },
+      );
+
 
       for await (const chunk of stream) {
         const choice = chunk.choices[0];

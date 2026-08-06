@@ -14,4 +14,9 @@ export type AgentEvent =
 
   | { type: "usage"; usage: TokenUsage }
 
-  | { type: "done"; answer: string };
+  | { type: "done"; answer: string }
+
+
+  | { type: "cancelled" };
+
+

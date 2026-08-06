@@ -5,7 +5,6 @@ import type {
   ToolCall,
   ToolResult,
 } from "../../protocol/index.js";
-
 import type { ChatParams, LLMProvider, LLMResponse } from "../llm/provider.js";
 import type { ToolContext } from "../tools/context.js";
 import type { ToolRegistry } from "../tools/registry.js";
@@ -20,9 +19,14 @@ interface LLMCallResult {
 }
 
 
+export const CANCELLED_ANSWER = "Cancelled by user.";
+
+
 export class Agent {
   private readonly messages: Message[] = [];
   private approvalHandler?: ApprovalHandler;
+
+  private readonly sessionAllowlist = new Set<string>();
 
   constructor(
     private readonly config: AgentConfig,
@@ -47,54 +51,80 @@ export class Agent {
   }
 
 
-  async *run(userInput: string): AsyncGenerator<AgentEvent, string, void> {
+  async *run(
+    userInput: string,
+    options: { signal?: AbortSignal } = {},
+  ): AsyncGenerator<AgentEvent, string, void> {
+    const { signal } = options;
+    const toolContext: ToolContext = { ...this.toolContext, signal };
     this.messages.push({ role: "user", content: userInput });
 
-    for (let iteration = 0; iteration < this.config.maxIterations; iteration++) {
-      const { response, streamed } = yield* this.chat({
-        model: this.config.model,
-        systemPrompt: this.config.systemPrompt,
-        messages: this.messages,
-        tools: this.tools.definitions(),
-      });
+    try {
+      for (let iteration = 0; iteration < this.config.maxIterations; iteration++) {
+        if (signal?.aborted) {
+          return yield* this.cancelTask();
+        }
 
-      if (response.usage) {
-        yield { type: "usage", usage: response.usage };
-      }
+        const { response, streamed } = yield* this.chat({
+          model: this.config.model,
+          systemPrompt: this.config.systemPrompt,
+          messages: this.messages,
+          tools: this.tools.definitions(),
+          signal,
+        });
 
-      this.messages.push({
-        role: "assistant",
-        content: response.text ?? "",
-        toolCalls: response.toolCalls.length > 0 ? response.toolCalls : undefined,
-      });
-
-
-      if (response.text && !streamed) {
-        yield { type: "text", text: response.text };
-      }
-
-
-      if (response.toolCalls.length === 0) {
-        const answer = response.text ?? "";
-        yield { type: "done", answer };
-        return answer;
-      }
-
-
-      for (const call of response.toolCalls) {
-        yield { type: "tool_call", call };
-
-        const result = await this.executeWithApproval(call);
-
-
-        yield { type: "tool_result", call, result };
+        if (response.usage) {
+          yield { type: "usage", usage: response.usage };
+        }
 
         this.messages.push({
-          role: "tool",
-          toolCallId: call.id,
-          content: result.isError ? `Error: ${result.content}` : result.content,
+          role: "assistant",
+          content: response.text ?? "",
+          toolCalls: response.toolCalls.length > 0 ? response.toolCalls : undefined,
         });
+
+
+        if (response.text && !streamed) {
+          yield { type: "text", text: response.text };
+        }
+
+
+        if (response.toolCalls.length === 0) {
+          const answer = response.text ?? "";
+          yield { type: "done", answer };
+          return answer;
+        }
+
+
+        for (const call of response.toolCalls) {
+          if (signal?.aborted) {
+            return yield* this.cancelTask();
+          }
+
+          yield { type: "tool_call", call };
+
+          const result = await this.executeWithApproval(call, toolContext);
+
+
+          if (signal?.aborted) {
+            return yield* this.cancelTask();
+          }
+
+          yield { type: "tool_result", call, result };
+
+          this.messages.push({
+            role: "tool",
+            toolCallId: call.id,
+            content: result.isError ? `Error: ${result.content}` : result.content,
+          });
+        }
       }
+    } catch (error) {
+
+      if (signal?.aborted) {
+        return yield* this.cancelTask();
+      }
+      throw error;
     }
 
     const answer = `Stopped: reached the limit of ${this.config.maxIterations} iterations without a final answer.`;
@@ -103,17 +133,50 @@ export class Agent {
   }
 
 
-  private async executeWithApproval(call: ToolCall): Promise<ToolResult> {
+  private *cancelTask(): Generator<AgentEvent, string, void> {
+    this.settlePendingToolCalls();
+    yield { type: "cancelled" };
+    return CANCELLED_ANSWER;
+  }
+
+
+  private settlePendingToolCalls(): void {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const message = this.messages[i];
+      if (message.role !== "assistant" || !message.toolCalls?.length) {
+        continue;
+      }
+      const answered = new Set(
+        this.messages
+          .slice(i + 1)
+          .filter((m) => m.role === "tool")
+          .map((m) => m.toolCallId),
+      );
+      for (const call of message.toolCalls) {
+        if (!answered.has(call.id)) {
+          this.messages.push({
+            role: "tool",
+            toolCallId: call.id,
+            content: "Error: task was cancelled by the user before this tool ran.",
+          });
+        }
+      }
+      return;
+    }
+  }
+
+
+  private async executeWithApproval(call: ToolCall, ctx: ToolContext): Promise<ToolResult> {
     const entry = this.tools.get(call.name);
 
     if (!entry) {
-      return this.tools.execute(call, this.toolContext);
+      return this.tools.execute(call, ctx);
     }
 
     const kind = entry.tool.definition.kind;
     const mode = this.config.permissionMode;
 
-    if (needsApproval(mode, kind)) {
+    if (needsApproval(mode, kind) && !this.sessionAllowlist.has(call.name)) {
       if (!this.approvalHandler) {
         return {
           content:
@@ -126,8 +189,9 @@ export class Agent {
 
       let decision: ApprovalDecision;
       try {
-        decision = await this.approvalHandler({ call, kind });
+        decision = await this.approvalHandler({ call, kind, signal: ctx.signal });
       } catch (error) {
+
 
         const message = error instanceof Error ? error.message : String(error);
         return {
@@ -135,7 +199,6 @@ export class Agent {
           isError: true,
         };
       }
-
 
       if (decision === "deny") {
         return {
@@ -145,9 +208,13 @@ export class Agent {
           isError: true,
         };
       }
+
+      if (decision === "always") {
+        this.sessionAllowlist.add(call.name);
+      }
     }
 
-    return this.tools.execute(call, this.toolContext);
+    return this.tools.execute(call, ctx);
   }
 
 
