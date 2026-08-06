@@ -10,6 +10,8 @@ const configSchema = z.object({
   model: z.string().min(1).default("deepseek-chat"),
   maxIterations: z.coerce.number().int().positive().default(20),
   debug: z.boolean().default(false),
+
+  streaming: z.boolean().default(true),
 });
 
 export type AppConfig = z.output<typeof configSchema>;
@@ -50,6 +52,8 @@ function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   if (env.AGENT_MAX_ITERATIONS?.trim()) layer.maxIterations = env.AGENT_MAX_ITERATIONS.trim();
   const debug = env.AGENT_DEBUG?.trim().toLowerCase();
   if (debug) layer.debug = debug === "1" || debug === "true";
+  const streaming = env.AGENT_STREAMING?.trim().toLowerCase();
+  if (streaming) layer.streaming = streaming === "1" || streaming === "true";
   return layer;
 }
 

@@ -39,8 +39,9 @@ export async function runRepl(agent: Agent, options: RenderOptions): Promise<voi
 
     if (input) {
       try {
-        const answer = await runAndRender(agent, input, options);
-        console.log(`\n${answer}\n`);
+
+        await runAndRender(agent, input, options);
+        console.log();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`\nError: ${message}\n`);

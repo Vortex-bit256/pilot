@@ -14,7 +14,7 @@ src/
 ├── index.ts               # composition root: сборка приложения, флаги CLI
 ├── protocol/              # контракт core <-> клиенты (только типы, без логики)
 │   ├── types.ts           # ToolCall, ToolResult, TokenUsage
-│   ├── events.ts          # AgentEvent: text, tool_call, tool_result, usage, done
+│   ├── events.ts          # AgentEvent: text, text_delta, tool_call, tool_result, usage, done
 │   └── commands.ts        # команды ядру (run_task, cancel_task)
 ├── core/                  # headless-движок: не пишет в stdout, не знает о CLI
 │   ├── agent/             # цикл агента (async-генератор событий) + типы истории
@@ -52,6 +52,7 @@ npm run debug
 | `model` | `AGENT_MODEL` | `"model"` | `deepseek-chat` |
 | `maxIterations` | `AGENT_MAX_ITERATIONS` | `"maxIterations"` | `20` |
 | `debug` | `AGENT_DEBUG` | `"debug"` | `false` |
+| `streaming` | `AGENT_STREAMING` | `"streaming"` | `true` |
 
 Пример `agent.config.json`:
 
@@ -89,8 +90,9 @@ npm run build && node dist/index.js "покажи список файлов в s
 Флаги CLI:
 
 ```
---debug, -d   логировать каждое событие агента в stderr
---help,  -h   справка
+--debug, -d    логировать каждое событие агента в stderr
+--no-stream    не стримить токены, ждать полный ответ LLM
+--help,  -h    справка
 ```
 
 ## Как это работает
@@ -100,13 +102,16 @@ npm run build && node dist/index.js "покажи список файлов в s
 2. `createProvider(config.provider)` берёт фабрику из реестра провайдеров; фабрика DeepSeek
    читает `DEEPSEEK_API_KEY`/`DEEPSEEK_BASE_URL` и падает с понятной ошибкой, если ключа нет.
 3. `Agent.run()` — async-генератор: крутит цикл LLM -> выполнение инструментов -> результат
-   обратно в LLM и по ходу отдаёт события (`tool_call`, `tool_result`, `usage`, `done`).
-   Ошибка любого инструмента не роняет цикл, а возвращается модели как `Error: ...`,
-   чтобы она могла скорректировать действия.
+   обратно в LLM и по ходу отдаёт события (`text_delta`, `tool_call`, `tool_result`,
+   `usage`, `done`). Ошибка любого инструмента не роняет цикл, а возвращается модели
+   как `Error: ...`, чтобы она могла скорректировать действия.
 4. Вход каждого инструмента валидируется zod-схемой в `ToolRegistry`; ошибка валидации
    тоже уходит модели как обычный результат инструмента.
-5. `cli/repl.ts` принимает ввод пользователя, `cli/render.ts` рендерит события
-   (в обычном режиме — тихо, с `--debug` — каждое событие в stderr).
+5. `cli/repl.ts` принимает ввод пользователя, `cli/render.ts` рендерит события живьём:
+   текст модели стримится по токенам, вызовы инструментов показываются строками
+   `→ read_file src/index.ts` / `← ok (1.2k chars)`. С `--debug` — сырой лог событий
+   в stderr, ответ в stdout. Стриминг отключается флагом `--no-stream`
+   (`AGENT_STREAMING=0`, `"streaming": false`).
 
 ## Расширение
 

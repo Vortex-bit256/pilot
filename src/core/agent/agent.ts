@@ -1,8 +1,15 @@
 import type { AgentEvent } from "../../protocol/index.js";
-import type { LLMProvider } from "../llm/provider.js";
+import type { ChatParams, LLMProvider, LLMResponse } from "../llm/provider.js";
 import type { ToolContext } from "../tools/context.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import type { AgentConfig, Message } from "./types.js";
+
+
+interface LLMCallResult {
+  response: LLMResponse;
+
+  streamed: boolean;
+}
 
 
 export class Agent {
@@ -20,7 +27,7 @@ export class Agent {
     this.messages.push({ role: "user", content: userInput });
 
     for (let iteration = 0; iteration < this.config.maxIterations; iteration++) {
-      const response = await this.llm.chat({
+      const { response, streamed } = yield* this.chat({
         model: this.config.model,
         systemPrompt: this.config.systemPrompt,
         messages: this.messages,
@@ -37,7 +44,8 @@ export class Agent {
         toolCalls: response.toolCalls.length > 0 ? response.toolCalls : undefined,
       });
 
-      if (response.text) {
+
+      if (response.text && !streamed) {
         yield { type: "text", text: response.text };
       }
 
@@ -67,5 +75,25 @@ export class Agent {
     const answer = `Stopped: reached the limit of ${this.config.maxIterations} iterations without a final answer.`;
     yield { type: "done", answer };
     return answer;
+  }
+
+
+  private async *chat(params: ChatParams): AsyncGenerator<AgentEvent, LLMCallResult, void> {
+    const chatStream =
+      this.config.streaming && this.llm.capabilities(params.model).streaming
+        ? this.llm.chatStream
+        : undefined;
+
+    if (!chatStream) {
+      return { response: await this.llm.chat(params), streamed: false };
+    }
+
+    const stream = chatStream.call(this.llm, params);
+    let step = await stream.next();
+    while (!step.done) {
+      yield { type: "text_delta", delta: step.value.delta };
+      step = await stream.next();
+    }
+    return { response: step.value, streamed: true };
   }
 }

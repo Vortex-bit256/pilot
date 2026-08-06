@@ -15,26 +15,31 @@ Prefer edit_file for small changes to existing files and write_file for new file
 Explain briefly what you are doing and keep answers concise.`;
 
 const USAGE = `Usage:
-  npm run dev                     Start the interactive REPL
-  npm run dev -- "task"           Run a single task and exit
-  npm run dev -- --debug "task"   Same, with verbose debug logs on stderr
+  npm run dev                         Start the interactive REPL
+  npm run dev -- "task"               Run a single task and exit
+  npm run dev -- --debug "task"       Same, with verbose debug logs on stderr
+  npm run dev -- --no-stream "task"   Disable token streaming (buffered replies)
 
 Options:
-  --debug, -d   Log every agent event to stderr (same as AGENT_DEBUG=1)
-  --help,  -h   Show this help`;
+  --debug, -d    Log every agent event to stderr (same as AGENT_DEBUG=1)
+  --no-stream    Wait for full LLM responses instead of streaming tokens
+  --help,  -h    Show this help`;
 
 interface CliArgs {
   debug: boolean;
+  stream: boolean;
   task?: string;
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const result: CliArgs = { debug: false };
+  const result: CliArgs = { debug: false, stream: true };
   const positional: string[] = [];
 
   for (const arg of argv) {
     if (arg === "--debug" || arg === "-d") {
       result.debug = true;
+    } else if (arg === "--no-stream") {
+      result.stream = false;
     } else if (arg === "--help" || arg === "-h") {
       console.log(USAGE);
       process.exit(0);
@@ -53,7 +58,10 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
 
-  const config = loadConfig(args.debug ? { debug: true } : {});
+  const cliOverrides: { debug?: boolean; streaming?: boolean } = {};
+  if (args.debug) cliOverrides.debug = true;
+  if (!args.stream) cliOverrides.streaming = false;
+  const config = loadConfig(cliOverrides);
 
 
   registerBuiltinProviders();
@@ -67,6 +75,7 @@ async function main(): Promise<void> {
       model: config.model,
       systemPrompt: SYSTEM_PROMPT,
       maxIterations: config.maxIterations,
+      streaming: config.streaming,
     },
     llm,
     tools,
@@ -77,8 +86,7 @@ async function main(): Promise<void> {
 
   if (args.task) {
 
-    const answer = await runAndRender(agent, args.task, { debug: config.debug });
-    console.log(answer);
+    await runAndRender(agent, args.task, { debug: config.debug });
     return;
   }
 

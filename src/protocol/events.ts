@@ -3,7 +3,10 @@ import type { TokenUsage, ToolCall, ToolResult } from "./types.js";
 
 export type AgentEvent =
 
+
   | { type: "text"; text: string }
+
+  | { type: "text_delta"; delta: string }
 
   | { type: "tool_call"; call: ToolCall }
 

@@ -17,6 +17,9 @@ export interface LLMResponse {
 }
 
 
+export type LLMStreamChunk = { type: "text_delta"; delta: string };
+
+
 export interface ModelCapabilities {
   streaming: boolean;
   toolCalling: boolean;
@@ -29,4 +32,7 @@ export interface LLMProvider {
   readonly id: string;
   capabilities(model: string): ModelCapabilities;
   chat(params: ChatParams): Promise<LLMResponse>;
+
+
+  chatStream?(params: ChatParams): AsyncGenerator<LLMStreamChunk, LLMResponse, void>;
 }

@@ -5,6 +5,7 @@ import type {
   ChatParams,
   LLMProvider,
   LLMResponse,
+  LLMStreamChunk,
   ModelCapabilities,
 } from "../provider.js";
 
@@ -21,8 +22,7 @@ export class DeepSeekProvider implements LLMProvider {
 
   capabilities(model: string): ModelCapabilities {
     return {
-
-      streaming: false,
+      streaming: true,
       toolCalling: true,
       reasoning: model.includes("reasoner"),
     };
@@ -32,28 +32,9 @@ export class DeepSeekProvider implements LLMProvider {
     let response: OpenAI.ChatCompletion;
 
     try {
-      response = await this.client.chat.completions.create({
-        model: params.model,
-        messages: toApiMessages(params),
-        tools:
-          params.tools?.length
-            ? params.tools.map((t) => ({
-                type: "function" as const,
-                function: {
-                  name: t.name,
-                  description: t.description,
-                  parameters: t.inputSchema,
-                },
-              }))
-            : undefined,
-      });
+      response = await this.client.chat.completions.create(toApiRequest(params));
     } catch (error) {
-      if (error instanceof OpenAI.APIError) {
-        throw new Error(
-          `DeepSeek API error (HTTP ${error.status ?? "unknown"}): ${error.message}`,
-        );
-      }
-      throw error;
+      throw normalizeApiError(error);
     }
 
     const choice = response.choices[0];
@@ -67,20 +48,67 @@ export class DeepSeekProvider implements LLMProvider {
         input: parseToolArguments(tc.function.arguments),
       }));
 
-    const usage: TokenUsage | undefined = response.usage
-      ? {
-          promptTokens: response.usage.prompt_tokens,
-          completionTokens: response.usage.completion_tokens,
-          totalTokens: response.usage.total_tokens,
-        }
-      : undefined;
-
     return {
       text: message?.content ?? undefined,
       toolCalls,
       stopReason: choice?.finish_reason ?? "unknown",
-      usage,
+      usage: response.usage ? toTokenUsage(response.usage) : undefined,
     };
+  }
+
+
+  async *chatStream(params: ChatParams): AsyncGenerator<LLMStreamChunk, LLMResponse, void> {
+    let text = "";
+    let stopReason = "unknown";
+    let usage: TokenUsage | undefined;
+    const pendingToolCalls = new Map<number, { id: string; name: string; arguments: string }>();
+
+    try {
+      const stream = await this.client.chat.completions.create({
+        ...toApiRequest(params),
+        stream: true,
+        stream_options: { include_usage: true },
+      });
+
+      for await (const chunk of stream) {
+        const choice = chunk.choices[0];
+        const delta = choice?.delta;
+
+        if (delta?.content) {
+          text += delta.content;
+          yield { type: "text_delta", delta: delta.content };
+        }
+
+        for (const toolCall of delta?.tool_calls ?? []) {
+          const acc = pendingToolCalls.get(toolCall.index) ?? { id: "", name: "", arguments: "" };
+          if (toolCall.id) acc.id = toolCall.id;
+          if (toolCall.function?.name) acc.name += toolCall.function.name;
+          if (toolCall.function?.arguments) acc.arguments += toolCall.function.arguments;
+          pendingToolCalls.set(toolCall.index, acc);
+        }
+
+        if (choice?.finish_reason) {
+          stopReason = choice.finish_reason;
+        }
+        if (chunk.usage) {
+          usage = toTokenUsage(chunk.usage);
+        }
+      }
+    } catch (error) {
+      throw normalizeApiError(error);
+    }
+
+    const toolCalls: ToolCall[] = [...pendingToolCalls.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([index, tc]) => ({
+
+
+        id: tc.id || `call_${index}`,
+        name: tc.name,
+        input: parseToolArguments(tc.arguments),
+      }));
+
+    return { text: text || undefined, toolCalls, stopReason, usage };
   }
 }
 
@@ -95,6 +123,24 @@ export function createDeepSeekProvider(): DeepSeekProvider {
     );
   }
   return new DeepSeekProvider(apiKey, process.env.DEEPSEEK_BASE_URL ?? DEFAULT_BASE_URL);
+}
+
+
+function toApiRequest(params: ChatParams) {
+  return {
+    model: params.model,
+    messages: toApiMessages(params),
+    tools: params.tools?.length
+      ? params.tools.map((t) => ({
+          type: "function" as const,
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.inputSchema,
+          },
+        }))
+      : undefined,
+  };
 }
 
 
@@ -128,6 +174,24 @@ function toApiMessages(params: ChatParams): OpenAI.ChatCompletionMessageParam[] 
   }
 
   return messages;
+}
+
+function toTokenUsage(usage: OpenAI.CompletionUsage): TokenUsage {
+  return {
+    promptTokens: usage.prompt_tokens,
+    completionTokens: usage.completion_tokens,
+    totalTokens: usage.total_tokens,
+  };
+}
+
+
+function normalizeApiError(error: unknown): unknown {
+  if (error instanceof OpenAI.APIError) {
+    return new Error(
+      `DeepSeek API error (HTTP ${error.status ?? "unknown"}): ${error.message}`,
+    );
+  }
+  return error;
 }
 
 

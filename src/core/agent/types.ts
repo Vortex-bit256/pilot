@@ -4,6 +4,8 @@ export interface AgentConfig {
   model: string;
   systemPrompt: string;
   maxIterations: number;
+
+  streaming: boolean;
 }
 
 
