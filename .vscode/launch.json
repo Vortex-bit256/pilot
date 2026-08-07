@@ -30,6 +30,18 @@
       "port": 9229,
       "restart": true,
       "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
+      "name": "Run Extension (Simple Agent)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "${workspaceFolder}",
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode"
+      ],
+      "outFiles": ["${workspaceFolder}/vscode/out/**/*.js"],
+      "preLaunchTask": "npm: compile - vscode"
     }
   ]
 }
+

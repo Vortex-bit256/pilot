@@ -140,6 +140,41 @@ npm run build && node dist/index.js "покажи список файлов в s
 передайте `--mode free` (`-y`) явно.
 
 
+## VS Code extension
+
+Клиент №2 — чат-панель в сайдбаре, работает на том же ядре (`src/core/`) без изменений:
+события агента рендерятся в webview, подтверждения инструментов показываются карточкой
+с diff-превью и кнопками Allow / Always / Deny.
+
+```
+vscode/
+├── package.json        # манифест: view container, webview view, команды, настройки
+├── src/
+│   ├── extension.ts    # activate(): регистрация провайдера и команд
+│   ├── chatView.ts     # ChatViewProvider: webview <-> мост сообщений
+│   ├── session.ts      # AgentSession: сборка Agent из настроек VS Code, approval-канал
+│   └── messages.ts     # типы сообщений extension host <-> webview
+└── media/
+    ├── main.js         # клиент webview: рендер событий (стриминг, инструменты, approvals)
+    ├── main.css        # стили на theme-переменных VS Code
+    └── icon.svg
+```
+
+Запуск для разработки:
+
+```bash
+cd vscode && npm install
+
+
+```
+
+Настройки — `simple-agent.*` в Settings (provider, model, permissionMode, maxIterations,
+streaming, debug). Ключ API читается из `.env` в корне открытого workspace или из
+переменных окружения, как и в CLI. Режим разрешений переключается кнопкой-чипом
+в заголовке панели или командой `Simple Agent: Cycle Permission Mode`; задача
+отменяется кнопкой ■ или `Simple Agent: Cancel Task`; `＋` начинает новую сессию
+(сброс истории).
+
 ## Как это работает
 
 1. `loadConfig()` загружает `.env`, накладывает слои `agent.config.json` → env → CLI-флаги

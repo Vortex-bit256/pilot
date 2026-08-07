@@ -1,0 +1,108 @@
+{
+  "name": "simple-agent",
+  "displayName": "Simple Agent",
+  "description": "Chat UI for the simple-agent coding agent",
+  "version": "0.1.0",
+  "publisher": "simple-agent",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "activationEvents": [],
+  "main": "./out/vscode/src/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "simple-agent",
+          "title": "Simple Agent",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "simple-agent": [
+        {
+          "type": "webview",
+          "id": "simple-agent.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "simple-agent.newSession",
+        "title": "Simple Agent: New Session",
+        "icon": "$(add)"
+      },
+      {
+        "command": "simple-agent.cancelTask",
+        "title": "Simple Agent: Cancel Task",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "simple-agent.cycleMode",
+        "title": "Simple Agent: Cycle Permission Mode",
+        "icon": "$(shield)"
+      }
+    ],
+    "configuration": {
+      "title": "Simple Agent",
+      "properties": {
+        "simple-agent.provider": {
+          "type": "string",
+          "default": "deepseek",
+          "description": "LLM provider id"
+        },
+        "simple-agent.model": {
+          "type": "string",
+          "default": "deepseek-chat",
+          "description": "Model name"
+        },
+        "simple-agent.permissionMode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "work",
+            "free"
+          ],
+          "default": "safe",
+          "description": "Permission preset: which tool calls need explicit approval"
+        },
+        "simple-agent.maxIterations": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "description": "Max LLM <-> tool round-trips per task"
+        },
+        "simple-agent.streaming": {
+          "type": "boolean",
+          "default": true,
+          "description": "Stream LLM tokens as they arrive"
+        },
+        "simple-agent.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log every agent event to the Simple Agent output channel"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "@types/vscode": "^1.85.0",
+    "dompurify": "^3.4.13",
+    "marked": "^18.0.9",
+    "typescript": "^7.0.2"
+  }
+}
