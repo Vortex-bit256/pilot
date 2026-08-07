@@ -1,4 +1,4 @@
-import type { TokenUsage, ToolCall, ToolResult } from "./types.js";
+import type { TokenUsage, ToolCall, ToolProgress, ToolResult } from "./types.js";
 
 
 export type AgentEvent =
@@ -10,7 +10,11 @@ export type AgentEvent =
 
   | { type: "tool_call"; call: ToolCall }
 
+
+  | { type: "tool_progress"; call: ToolCall; progress: ToolProgress }
+
   | { type: "tool_result"; call: ToolCall; result: ToolResult }
+
 
   | { type: "usage"; usage: TokenUsage }
 

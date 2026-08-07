@@ -3,8 +3,10 @@ import type {
   ApprovalDecision,
   PermissionMode,
   ToolCall,
+  ToolProgress,
   ToolResult,
 } from "../../protocol/index.js";
+
 import type { ChatParams, LLMProvider, LLMResponse } from "../llm/provider.js";
 import type { ToolContext } from "../tools/context.js";
 import type { ToolRegistry } from "../tools/registry.js";
@@ -103,7 +105,7 @@ export class Agent {
 
           yield { type: "tool_call", call };
 
-          const result = await this.executeWithApproval(call, toolContext);
+          const result = yield* this.executeWithProgress(call, toolContext);
 
 
           if (signal?.aborted) {
@@ -111,6 +113,7 @@ export class Agent {
           }
 
           yield { type: "tool_result", call, result };
+
 
           this.messages.push({
             role: "tool",
@@ -215,6 +218,52 @@ export class Agent {
     }
 
     return this.tools.execute(call, ctx);
+  }
+
+
+  private async *executeWithProgress(
+    call: ToolCall,
+    ctx: ToolContext,
+  ): AsyncGenerator<AgentEvent, ToolResult, void> {
+    const pending: ToolProgress[] = [];
+    const execution = this.executeWithApproval(call, {
+      ...ctx,
+      onProgress: (progress) => pending.push(progress),
+    });
+
+    let result: ToolResult;
+    try {
+
+
+      while (true) {
+        const outcome = await Promise.race([
+          execution.then(
+            (r) => ({ kind: "done" as const, result: r }),
+            (error: unknown) => ({ kind: "failed" as const, error }),
+          ),
+          new Promise<{ kind: "tick" }>((resolve) =>
+            setTimeout(() => resolve({ kind: "tick" }), 50),
+          ),
+        ]);
+
+        let progress: ToolProgress | undefined;
+        while ((progress = pending.shift())) {
+          yield { type: "tool_progress", call, progress };
+        }
+
+        if (outcome.kind === "done") {
+          result = outcome.result;
+          break;
+        }
+        if (outcome.kind === "failed") {
+          throw outcome.error;
+        }
+      }
+    } finally {
+
+      execution.catch(() => {});
+    }
+    return result;
   }
 
 

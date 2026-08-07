@@ -13,6 +13,19 @@ export interface ToolResult {
 }
 
 
+export interface ToolProgress {
+
+  stage: string;
+
+  label: string;
+
+  elapsed?: number;
+
+
+  output?: string[];
+}
+
+
 export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;

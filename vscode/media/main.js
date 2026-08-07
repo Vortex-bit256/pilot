@@ -90,9 +90,13 @@
         closeText();
         addToolCall(message.call);
         break;
+      case "toolProgress":
+        updateToolProgress(message.call, message.progress);
+        break;
       case "toolResult":
         updateToolResult(message.call, message.result);
         break;
+
       case "approvalRequest":
         addApprovalCard(message);
         break;
@@ -185,13 +189,50 @@
     args.textContent = summarizeInput(call.input);
     summary.append(icon, name, args);
 
+
+    const status = document.createElement("span");
+    status.className = "tool-status";
+    status.textContent = "running…";
+    summary.appendChild(status);
+
     const body = document.createElement("pre");
     body.className = "tool-body";
     body.textContent = JSON.stringify(call.input, null, 2);
 
     el.append(summary, body);
+    el.dataset.startedAt = String(Date.now());
     chat.appendChild(el);
     toolBlocks.set(call.id, el);
+    scrollToBottom();
+  }
+
+
+  function updateToolProgress(call, progress) {
+    const el = toolBlocks.get(call.id);
+    if (!el || !el.classList.contains("running")) return;
+
+    const status = el.querySelector(".tool-status");
+    if (status) {
+      status.textContent = progress.label;
+    }
+
+
+    if (progress.output && progress.output.length > 0) {
+      const body = el.querySelector(".tool-body");
+      if (body) {
+        if (!el.dataset.streaming) {
+          el.dataset.streaming = "1";
+          body.textContent = "";
+        }
+        body.textContent += progress.output.join("\n") + "\n";
+
+        const lines = body.textContent.split("\n");
+        if (lines.length > 300) {
+          body.textContent = lines.slice(lines.length - 300).join("\n");
+        }
+        body.scrollTop = body.scrollHeight;
+      }
+    }
     scrollToBottom();
   }
 
@@ -208,7 +249,16 @@
       icon.textContent = result.isError ? "✗" : "✓";
     }
 
+
+    const status = el.querySelector(".tool-status");
+    if (status) {
+      const startedAt = Number(el.dataset.startedAt ?? 0);
+      const seconds = startedAt ? (Date.now() - startedAt) / 1000 : 0;
+      status.textContent = seconds >= 0.05 ? `${seconds.toFixed(1)}s` : "";
+    }
+
     const body = el.querySelector(".tool-body");
+
     if (body) {
       const preview = result.content.length > 2000
         ? result.content.slice(0, 2000) + `\n… (${result.content.length} chars total)`

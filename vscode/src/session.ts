@@ -280,6 +280,9 @@ export class AgentSession implements vscode.Disposable {
       case "tool_call":
         this.post({ type: "toolCall", call: event.call });
         break;
+      case "tool_progress":
+        this.post({ type: "toolProgress", call: event.call, progress: event.progress });
+        break;
       case "tool_result":
         this.post({ type: "toolResult", call: event.call, result: event.result });
         break;
@@ -288,6 +291,7 @@ export class AgentSession implements vscode.Disposable {
       case "usage":
 
         break;
+
     }
   }
 

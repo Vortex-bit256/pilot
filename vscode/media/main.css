@@ -272,6 +272,20 @@ body {
   white-space: nowrap;
 }
 
+
+.tool-status {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+.tool.running .tool-status {
+  color: var(--vscode-charts-blue, var(--vscode-textLink-foreground));
+}
+
+
 .tool-body {
   margin: 6px 0 2px;
   padding: 6px 8px;

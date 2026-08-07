@@ -1,7 +1,9 @@
 export type {
   ToolCall,
   ToolResult,
+  ToolProgress,
   TokenUsage,
+
   ToolKind,
   PermissionMode,
   ApprovalRequest,

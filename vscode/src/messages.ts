@@ -4,8 +4,10 @@ import type {
   TokenUsage,
   ToolCall,
   ToolKind,
+  ToolProgress,
   ToolResult,
 } from "../../src/protocol/index.js";
+
 import type { DiffLine } from "../../src/cli/diff.js";
 
 
@@ -13,7 +15,9 @@ export type ToWebviewMessage =
   | { type: "assistantDelta"; delta: string }
   | { type: "assistantText"; text: string }
   | { type: "toolCall"; call: ToolCall }
+  | { type: "toolProgress"; call: ToolCall; progress: ToolProgress }
   | { type: "toolResult"; call: ToolCall; result: ToolResult }
+
   | {
       type: "approvalRequest";
       id: string;
