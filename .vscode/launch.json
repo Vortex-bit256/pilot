@@ -32,7 +32,7 @@
       "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
     },
     {
-      "name": "Run Extension (Simple Agent)",
+      "name": "Run Extension (Pilot)",
       "type": "extensionHost",
       "request": "launch",
       "args": [
@@ -44,4 +44,3 @@
     }
   ]
 }
-

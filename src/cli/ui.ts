@@ -203,9 +203,9 @@ export class Spinner {
 
 export function banner(version: string, extra?: { provider?: string; model?: string }): string {
   const logo = [
-    theme.primary("  ▄▄ ▄▄"),
-    theme.primary("  █  █  ") + theme.text("simple-agent ") + theme.muted(`v${version}`),
-    theme.primary("  ▀▀▀▀  ") + theme.muted("coding agent"),
+    theme.primary("    ▲   "),
+    theme.primary("   ╱│╲  ") + theme.text("Pilot ") + theme.muted(`v${version}`),
+    theme.primary("  ╱ │ ╲ ") + theme.muted("coding agent"),
   ];
 
   const lines: string[] = [...logo];

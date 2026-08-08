@@ -10,9 +10,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, provider, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
-    vscode.commands.registerCommand("simple-agent.newSession", () => provider.newSession()),
-    vscode.commands.registerCommand("simple-agent.cancelTask", () => provider.cancelTask()),
-    vscode.commands.registerCommand("simple-agent.cycleMode", () => provider.cycleMode()),
+    vscode.commands.registerCommand("pilot.newSession", () => provider.newSession()),
+    vscode.commands.registerCommand("pilot.cancelTask", () => provider.cancelTask()),
+    vscode.commands.registerCommand("pilot.cycleMode", () => provider.cycleMode()),
   );
 }
 

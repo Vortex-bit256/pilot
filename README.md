@@ -1,6 +1,6 @@
-# simple-agent
+# Pilot
 
-MVP coding-агента на TypeScript / Node.js. Подключается к DeepSeek API (OpenAI-совместимый) по API-ключу,
+Pre-MVP coding-агента на TypeScript / Node.js. Подключается к DeepSeek API (OpenAI-совместимый) по API-ключу,
 поддерживает tool-calling (чтение/запись/правка файлов, листинг директорий, запуск shell-команд)
 и работает как интерактивный REPL или как разовая CLI-команда.
 
@@ -168,11 +168,11 @@ cd vscode && npm install
 
 ```
 
-Настройки — `simple-agent.*` в Settings (provider, model, permissionMode, maxIterations,
+Настройки — `pilot.*` в Settings (provider, model, permissionMode, maxIterations,
 streaming, debug). Ключ API читается из `.env` в корне открытого workspace или из
 переменных окружения, как и в CLI. Режим разрешений переключается кнопкой-чипом
-в заголовке панели или командой `Simple Agent: Cycle Permission Mode`; задача
-отменяется кнопкой ■ или `Simple Agent: Cancel Task`; `＋` начинает новую сессию
+в заголовке панели или командой `Pilot: Cycle Permission Mode`; задача
+отменяется кнопкой ■ или `Pilot: Cancel Task`; `＋` начинает новую сессию
 (сброс истории).
 
 ## Как это работает

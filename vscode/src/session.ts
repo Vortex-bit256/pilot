@@ -45,10 +45,10 @@ export class AgentSession implements vscode.Disposable {
     private readonly extensionPath: string,
   ) {
     this.cwd = workspaceRoot;
-    this.log = vscode.window.createOutputChannel("Simple Agent");
+    this.log = vscode.window.createOutputChannel("Pilot");
 
 
-    const settings = vscode.workspace.getConfiguration("simple-agent");
+    const settings = vscode.workspace.getConfiguration("pilot");
     const providerId = settings.get<string>("provider", "deepseek");
     const model = settings.get<string>("model", "deepseek-chat");
     const permissionMode = settings.get<PermissionMode>("permissionMode", "safe");
@@ -98,7 +98,7 @@ export class AgentSession implements vscode.Disposable {
     this.postStatus();
     if (mode === "free") {
       vscode.window.showWarningMessage(
-        "Simple Agent: FREE MODE — all tool calls, including shell commands, run WITHOUT confirmation.",
+        "Pilot: FREE MODE — all tool calls, including shell commands, run WITHOUT confirmation.",
       );
     }
   }
@@ -106,7 +106,7 @@ export class AgentSession implements vscode.Disposable {
 
   async runTask(text: string): Promise<void> {
     if (this.running) {
-      vscode.window.showInformationMessage("Simple Agent: a task is already running.");
+      vscode.window.showInformationMessage("Pilot: a task is already running.");
       return;
     }
 

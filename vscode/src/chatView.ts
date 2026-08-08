@@ -5,7 +5,7 @@ import { AgentSession } from "./session.js";
 
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
-  static readonly viewType = "simple-agent.chatView";
+  static readonly viewType = "pilot.chatView";
 
   private view: vscode.WebviewView | undefined;
   private session: AgentSession | undefined;
@@ -86,7 +86,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.post({ type: "runFinished", error: message });
-      vscode.window.showErrorMessage(`Simple Agent: ${message}`);
+      vscode.window.showErrorMessage(`Pilot: ${message}`);
     }
   }
 
@@ -157,11 +157,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="${styleUri}" />
-  <title>Simple Agent</title>
+  <title>Pilot</title>
 </head>
 <body>
   <header id="toolbar">
-    <span class="brand">⬢ simple-agent</span>
+    <span class="brand">▲ Pilot</span>
     <span class="spacer"></span>
     <button id="mode-btn" class="chip" title="Permission mode (click to cycle)">safe</button>
     <button id="new-btn" class="icon-btn" title="New session">＋</button>
@@ -170,7 +170,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <main id="chat" aria-live="polite"></main>
 
   <div id="empty-state">
-    <div class="logo">⬢</div>
+    <div class="logo">▲</div>
     <p>Ask the agent to inspect, change or run something in this workspace.</p>
     <p class="hint">Write/exec tool calls may ask for approval — you decide each time.</p>
   </div>

@@ -1,9 +1,9 @@
 {
-  "name": "simple-agent",
-  "displayName": "Simple Agent",
-  "description": "Chat UI for the simple-agent coding agent",
+  "name": "pilot",
+  "displayName": "Pilot",
+  "description": "Chat UI for the pilot coding agent",
   "version": "0.1.0",
-  "publisher": "simple-agent",
+  "publisher": "pilot",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -19,52 +19,52 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "simple-agent",
-          "title": "Simple Agent",
+          "id": "pilot",
+          "title": "Pilot",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "simple-agent": [
+      "pilot": [
         {
           "type": "webview",
-          "id": "simple-agent.chatView",
+          "id": "pilot.chatView",
           "name": "Chat"
         }
       ]
     },
     "commands": [
       {
-        "command": "simple-agent.newSession",
-        "title": "Simple Agent: New Session",
+        "command": "pilot.newSession",
+        "title": "Pilot: New Session",
         "icon": "$(add)"
       },
       {
-        "command": "simple-agent.cancelTask",
-        "title": "Simple Agent: Cancel Task",
+        "command": "pilot.cancelTask",
+        "title": "Pilot: Cancel Task",
         "icon": "$(stop)"
       },
       {
-        "command": "simple-agent.cycleMode",
-        "title": "Simple Agent: Cycle Permission Mode",
+        "command": "pilot.cycleMode",
+        "title": "Pilot: Cycle Permission Mode",
         "icon": "$(shield)"
       }
     ],
     "configuration": {
-      "title": "Simple Agent",
+      "title": "Pilot",
       "properties": {
-        "simple-agent.provider": {
+        "pilot.provider": {
           "type": "string",
           "default": "deepseek",
           "description": "LLM provider id"
         },
-        "simple-agent.model": {
+        "pilot.model": {
           "type": "string",
           "default": "deepseek-chat",
           "description": "Model name"
         },
-        "simple-agent.permissionMode": {
+        "pilot.permissionMode": {
           "type": "string",
           "enum": [
             "safe",
@@ -74,21 +74,21 @@
           "default": "safe",
           "description": "Permission preset: which tool calls need explicit approval"
         },
-        "simple-agent.maxIterations": {
+        "pilot.maxIterations": {
           "type": "number",
           "default": 20,
           "minimum": 1,
           "description": "Max LLM <-> tool round-trips per task"
         },
-        "simple-agent.streaming": {
+        "pilot.streaming": {
           "type": "boolean",
           "default": true,
           "description": "Stream LLM tokens as they arrive"
         },
-        "simple-agent.debug": {
+        "pilot.debug": {
           "type": "boolean",
           "default": false,
-          "description": "Log every agent event to the Simple Agent output channel"
+          "description": "Log every agent event to the Pilot output channel"
         }
       }
     }
