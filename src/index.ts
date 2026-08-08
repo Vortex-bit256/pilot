@@ -1,6 +1,7 @@
 import * as readline from "node:readline";
 import { theme } from "./cli/ansi.js";
 import { createCliApprovalHandler, readlineQuestion } from "./cli/approval.js";
+import { activeChat, loadHistory } from "./cli/history.js";
 import { banner, glyphs } from "./cli/ui.js";
 
 import { runAndRender } from "./cli/render.js";
@@ -103,6 +104,7 @@ async function main(): Promise<void> {
 
   const tools = new ToolRegistry();
   tools.registerAll(builtinTools);
+  const cliHistory = args.task ? undefined : await loadHistory();
 
   const agent = new Agent(
     {
@@ -115,6 +117,7 @@ async function main(): Promise<void> {
     llm,
     tools,
     { cwd: process.cwd() },
+    cliHistory ? activeChat(cliHistory).messages : [],
   );
 
   if (!args.task) {
@@ -173,7 +176,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  await runRepl(agent, { debug: config.debug });
+  await runRepl(agent, { debug: config.debug, history: cliHistory });
 }
 
 

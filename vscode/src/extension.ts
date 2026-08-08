@@ -3,7 +3,7 @@ import { ChatViewProvider } from "./chatView.js";
 
 
 export function activate(context: vscode.ExtensionContext): void {
-  const provider = new ChatViewProvider(context.extensionUri);
+  const provider = new ChatViewProvider(context.extensionUri, context.globalState);
 
   context.subscriptions.push(
     provider,

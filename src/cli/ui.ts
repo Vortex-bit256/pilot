@@ -203,15 +203,20 @@ export class Spinner {
 
 export function banner(version: string, extra?: { provider?: string; model?: string }): string {
   const logo = [
-    theme.primary("    ▲   "),
-    theme.primary("   ╱│╲  ") + theme.text("Pilot ") + theme.muted(`v${version}`),
-    theme.primary("  ╱ │ ╲ ") + theme.muted("coding agent"),
+    theme.accent("      ✦      ") + theme.faint("flight deck online"),
+    theme.primaryBold("██████╗  ██╗ ██╗       ██████╗  ████████╗"),
+    theme.primary("██╔══██╗ ██║ ██║      ██╔═══██╗ ╚══██╔══╝"),
+    theme.accent("██████╔╝ ██║ ██║      ██║   ██║    ██║   "),
+    theme.primary("██╔═══╝  ██║ ██║      ██║   ██║    ██║   "),
+    theme.primaryBold("██║      ██║ ███████╗ ╚██████╔╝    ██║   "),
+    theme.faint("╚═╝      ╚═╝ ╚══════╝  ╚═════╝     ╚═╝   "),
+    theme.text("Pilot ") + theme.muted(`v${version}`) + theme.faint("  ·  coding agent"),
   ];
 
   const lines: string[] = [...logo];
   if (extra?.provider || extra?.model) {
     lines.push(
-      "        " +
+      "       " +
         theme.faint("provider ") +
         theme.muted(extra.provider ?? "?") +
         theme.faint("  ·  model ") +

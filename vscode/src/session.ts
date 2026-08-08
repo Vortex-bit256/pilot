@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import * as vscode from "vscode";
 import { Agent } from "../../src/core/agent/agent.js";
 import type { ApprovalHandler } from "../../src/core/agent/permissions.js";
+import type { Message } from "../../src/core/agent/types.js";
 import { registerBuiltinProviders } from "../../src/core/llm/providers/index.js";
 import { createProvider } from "../../src/core/llm/registry.js";
 import { builtinTools } from "../../src/core/tools/builtin/index.js";
@@ -43,6 +44,7 @@ export class AgentSession implements vscode.Disposable {
     private readonly post: (message: ToWebviewMessage) => void,
     workspaceRoot: string,
     private readonly extensionPath: string,
+    initialMessages: Message[] = [],
   ) {
     this.cwd = workspaceRoot;
     this.log = vscode.window.createOutputChannel("Pilot");
@@ -73,6 +75,7 @@ export class AgentSession implements vscode.Disposable {
       llm,
       tools,
       { cwd: this.cwd },
+      initialMessages,
     );
 
     this.agent.setApprovalHandler(this.handleApproval);
@@ -85,6 +88,10 @@ export class AgentSession implements vscode.Disposable {
 
   get permissionMode(): PermissionMode {
     return this.agent.permissionMode;
+  }
+
+  snapshotMessages(): Message[] {
+    return this.agent.snapshotMessages();
   }
 
 

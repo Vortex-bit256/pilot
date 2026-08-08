@@ -1,6 +1,13 @@
 import * as readline from "node:readline";
 import type { Agent } from "../core/agent/agent.js";
 import {
+  activeChat,
+  createChat,
+  saveHistory,
+  updateActiveChat,
+  type CliHistory,
+} from "./history.js";
+import {
   describePermissionMode,
   parsePermissionMode,
   PERMISSION_MODES,
@@ -17,7 +24,10 @@ interface KeypressKey {
 
 const PROMPT = `${theme.primary("❯")} `;
 
-export async function runRepl(agent: Agent, options: RenderOptions): Promise<void> {
+export async function runRepl(
+  agent: Agent,
+  options: RenderOptions & { history?: CliHistory },
+): Promise<void> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -37,7 +47,7 @@ export async function runRepl(agent: Agent, options: RenderOptions): Promise<voi
     );
   }
 
-  printHints(agent);
+  printHints(agent, options.history);
   rl.prompt();
 
 
@@ -75,6 +85,18 @@ export async function runRepl(agent: Agent, options: RenderOptions): Promise<voi
       continue;
     }
 
+    if (command === "chats" || command === "history") {
+      printChats(options.history);
+      rl.prompt();
+      continue;
+    }
+
+    if (command === "chat" || command.startsWith("chat ")) {
+      await handleChatCommand(agent, options.history, command.slice("chat".length).trim());
+      rl.prompt();
+      continue;
+    }
+
     if (command === "mode" || command.startsWith("mode ")) {
       handleModeCommand(agent, command.slice("mode".length).trim());
       rl.prompt();
@@ -87,6 +109,10 @@ export async function runRepl(agent: Agent, options: RenderOptions): Promise<voi
       currentTask = controller;
       try {
         await runAndRender(agent, input, { ...options, signal: controller.signal });
+        if (options.history) {
+          updateActiveChat(options.history, agent.snapshotMessages(), input);
+          await saveHistory(options.history);
+        }
         console.log();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -103,7 +129,8 @@ export async function runRepl(agent: Agent, options: RenderOptions): Promise<voi
 }
 
 
-function printHints(agent: Agent): void {
+function printHints(agent: Agent, history?: CliHistory): void {
+  const chat = history ? activeChat(history) : undefined;
   console.log(
     "  " +
       theme.faint("type ") +
@@ -111,7 +138,8 @@ function printHints(agent: Agent): void {
       theme.faint(" for commands  ·  ") +
       keycap("esc") +
       theme.faint(" cancels a running task  ·  mode: ") +
-      theme.muted(agent.permissionMode),
+      theme.muted(agent.permissionMode) +
+      (chat ? theme.faint("  ·  chat: ") + theme.muted(chat.title) : ""),
   );
   console.log();
 }
@@ -137,6 +165,10 @@ function printHelp(): void {
       [
         `${themeBold.text("help")}          ${theme.muted("Show this help")}`,
         `${themeBold.text("mode")} [name]   ${theme.muted("Show or switch the permission mode")}`,
+        `${themeBold.text("chats")}         ${theme.muted("List saved chats")}`,
+        `${themeBold.text("chat new")}      ${theme.muted("Start a new chat")}`,
+        `${themeBold.text("chat use")} N    ${theme.muted("Switch to a saved chat")}`,
+        `${themeBold.text("chat delete")} N ${theme.muted("Delete a saved chat")}`,
         `${themeBold.text("exit")}          ${theme.muted("Quit (also: quit, Ctrl+C, Ctrl+D)")}`,
         "",
         theme.muted("While a task is running, ") +
@@ -190,4 +222,96 @@ function handleModeCommand(agent: Agent, arg: string): void {
         theme.muted(`Permission mode: ${describePermissionMode(mode)}`),
     );
   }
+}
+
+
+function printChats(history: CliHistory | undefined): void {
+  if (!history) {
+    console.log(theme.warning(`${glyphs.warn} Chat history is unavailable in this run.`));
+    return;
+  }
+
+  const lines = history.chats.map((chat, index) => {
+    const marker = chat.id === history.activeChatId ? theme.success(glyphs.check) : " ";
+    const number = theme.faint(String(index + 1).padStart(2, " "));
+    const title = chat.id === history.activeChatId ? themeBold.accent(chat.title) : theme.muted(chat.title);
+    const count = theme.faint(`${chat.messages.filter((message) => message.role === "user").length} turns`);
+    return `${marker} ${number}  ${title}  ${count}`;
+  });
+
+  console.log();
+  console.log(box(lines, { title: "chats", minWidth: 64 }));
+  console.log();
+}
+
+
+async function handleChatCommand(
+  agent: Agent,
+  history: CliHistory | undefined,
+  arg: string,
+): Promise<void> {
+  if (!history) {
+    console.log(theme.warning(`${glyphs.warn} Chat history is unavailable in this run.`));
+    return;
+  }
+
+  if (!arg) {
+    printChats(history);
+    return;
+  }
+
+  if (arg === "new") {
+    updateActiveChat(history, agent.snapshotMessages());
+    const chat = createChat();
+    history.chats.unshift(chat);
+    history.activeChatId = chat.id;
+    agent.replaceMessages([]);
+    await saveHistory(history);
+    console.log(theme.success(`${glyphs.check} New chat started.`));
+    return;
+  }
+
+  if (arg.startsWith("use ")) {
+    const chat = findChat(history, arg.slice("use ".length).trim());
+    if (!chat) {
+      console.log(theme.error(`${glyphs.cross} Chat not found.`));
+      return;
+    }
+    updateActiveChat(history, agent.snapshotMessages());
+    history.activeChatId = chat.id;
+    agent.replaceMessages(chat.messages);
+    await saveHistory(history);
+    console.log(theme.success(`${glyphs.check} Switched to "${chat.title}".`));
+    return;
+  }
+
+  if (arg.startsWith("delete ")) {
+    const chat = findChat(history, arg.slice("delete ".length).trim());
+    if (!chat) {
+      console.log(theme.error(`${glyphs.cross} Chat not found.`));
+      return;
+    }
+    history.chats = history.chats.filter((item) => item.id !== chat.id);
+    if (history.chats.length === 0) {
+      history.chats.push(createChat());
+    }
+    if (history.activeChatId === chat.id) {
+      history.activeChatId = history.chats[0].id;
+      agent.replaceMessages(activeChat(history).messages);
+    }
+    await saveHistory(history);
+    console.log(theme.success(`${glyphs.check} Deleted "${chat.title}".`));
+    return;
+  }
+
+  console.log(theme.error(`${glyphs.cross} Unknown chat command.`) + theme.faint(" Try: chats, chat new, chat use N, chat delete N."));
+}
+
+
+function findChat(history: CliHistory, value: string) {
+  const index = Number(value);
+  if (Number.isInteger(index) && index >= 1 && index <= history.chats.length) {
+    return history.chats[index - 1];
+  }
+  return history.chats.find((chat) => chat.id === value);
 }

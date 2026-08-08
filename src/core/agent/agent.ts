@@ -25,7 +25,7 @@ export const CANCELLED_ANSWER = "Cancelled by user.";
 
 
 export class Agent {
-  private readonly messages: Message[] = [];
+  private readonly messages: Message[];
   private approvalHandler?: ApprovalHandler;
 
   private readonly sessionAllowlist = new Set<string>();
@@ -35,7 +35,10 @@ export class Agent {
     private readonly llm: LLMProvider,
     private readonly tools: ToolRegistry,
     private readonly toolContext: ToolContext,
-  ) {}
+    initialMessages: Message[] = [],
+  ) {
+    this.messages = initialMessages.map((message) => ({ ...message }));
+  }
 
 
   get permissionMode(): PermissionMode {
@@ -50,6 +53,16 @@ export class Agent {
 
   setApprovalHandler(handler: ApprovalHandler | undefined): void {
     this.approvalHandler = handler;
+  }
+
+
+  snapshotMessages(): Message[] {
+    return this.messages.map((message) => ({ ...message }));
+  }
+
+
+  replaceMessages(messages: Message[]): void {
+    this.messages.splice(0, this.messages.length, ...messages.map((message) => ({ ...message })));
   }
 
 

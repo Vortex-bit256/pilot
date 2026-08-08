@@ -19,6 +19,7 @@
   const cancelBtn =  (document.getElementById("cancel-btn"));
   const modeBtn =  (document.getElementById("mode-btn"));
   const newBtn =  (document.getElementById("new-btn"));
+  const historyList =  (document.getElementById("history-list"));
 
 
   let mode = "safe";
@@ -32,6 +33,7 @@
 
 
   const toolBlocks = new Map();
+  let activeChatId = "";
 
 
   function send() {
@@ -119,6 +121,9 @@
         toolBlocks.clear();
         closeText();
         showEmptyState();
+        break;
+      case "historyState":
+        renderHistoryState(message);
         break;
     }
   });
@@ -424,6 +429,85 @@
     sendBtn.hidden = isRunning;
     cancelBtn.hidden = !isRunning;
     input.disabled = isRunning;
+    historyList.classList.toggle("disabled", isRunning);
+  }
+
+
+  function renderHistoryState(state) {
+    activeChatId = state.activeChatId;
+    historyList.innerHTML = "";
+    for (const item of state.chats) {
+      const button = document.createElement("button");
+      button.className = "history-item";
+      button.classList.toggle("active", item.id === state.activeChatId);
+      button.type = "button";
+      button.disabled = running;
+      button.title = item.title;
+      button.dataset.chatId = item.id;
+
+      const title = document.createElement("span");
+      title.className = "history-title";
+      title.textContent = item.title;
+      const time = document.createElement("span");
+      time.className = "history-time";
+      time.textContent = formatHistoryTime(item.updatedAt);
+      const remove = document.createElement("span");
+      remove.className = "history-delete";
+      remove.role = "button";
+      remove.tabIndex = running ? -1 : 0;
+      remove.title = "Delete chat";
+      remove.textContent = "×";
+      button.append(title, time, remove);
+
+      button.addEventListener("click", () => {
+        if (!running && item.id !== activeChatId) {
+          vscode.postMessage({ type: "selectChat", id: item.id });
+        }
+      });
+      remove.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (!running) {
+          vscode.postMessage({ type: "deleteChat", id: item.id });
+        }
+      });
+      remove.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!running) {
+            vscode.postMessage({ type: "deleteChat", id: item.id });
+          }
+        }
+      });
+      historyList.appendChild(button);
+    }
+
+    chat.innerHTML = "";
+    toolBlocks.clear();
+    closeText();
+    for (const entry of state.entries) {
+      renderHistoryEntry(entry);
+    }
+    showEmptyState();
+    scrollToBottom();
+  }
+
+
+  function renderHistoryEntry(entry) {
+    if (entry.type === "user") {
+      appendUserMessage(entry.text);
+    } else if (entry.type === "assistant") {
+      appendFullText(entry.text);
+    } else if (entry.type === "tool") {
+      addToolCall(entry.call);
+      if (entry.result) {
+        updateToolResult(entry.call, entry.result);
+      }
+    } else if (entry.type === "footer") {
+      appendFooter(entry.stats);
+    } else if (entry.type === "error") {
+      appendError(entry.text);
+    }
   }
 
 
@@ -437,6 +521,12 @@
 
   function formatTokens(count) {
     return count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count);
+  }
+
+  function formatHistoryTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
 
   function hideEmptyState() {
